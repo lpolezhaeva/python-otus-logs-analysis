@@ -1,15 +1,37 @@
 import argparse
+import glob
 import re
 import json
+import os
 from collections import defaultdict
 from collections import Counter
 
 
-def main(files):
-    findex = 0
+def get_log_files(paths):
+    files = []
 
-    for file in files:
-        findex += 1
+    for path in paths:
+        if os.path.isfile(path):
+            base_name, extension = os.path.splitext(path)
+            if extension[1:] == 'log':
+                files.append(path)
+            else:
+                print(f"Skipped file (without .log extensions): {path}")
+        else:
+            log_files = glob.glob(os.path.join(path, '**/*.log'), recursive=True)
+            for file in log_files:
+                if os.path.isfile(file):
+                    files.append(file)
+
+    return files
+
+
+def main(paths):
+
+    log_files = get_log_files(paths)
+
+    for findex, file in enumerate(log_files, start=1):
+        print(f"Processing file: {file}")
 
         requests = []
         ips_count = defaultdict(int)
@@ -22,8 +44,8 @@ def main(files):
 
                 match = re.search(r"(?:(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s-\s(?:[-\w\"\.@]+)\s(?P<time>\[\s*("
                                   r"\d+/\D+/.*?)\])\s\"(?P<method>POST|GET|PUT|DELETE|HEAD|OPTIONS)\s("
-                                  r"?P<url_path>\S+)\s+?HTTP/\d\.\d\"\s(?P<response_code>\d+?)\s(?P<duration>\d+?|-)\s\"("
-                                  r"?P<url>[^\"]*))\"", line)
+                                  r"?P<url_path>\S+)\s+?HTTP/\d\.\d\"\s(?P<response_code>\d+?)\s(?P<number_of_bytes>\d+?|-)\s\"("
+                                  r"?P<url>[^\"]*))\".+?(?P<duration>\d*)$", line)
 
                 if match:
                     ip = match.group("ip")
@@ -38,15 +60,13 @@ def main(files):
                     total_stat[method] += 1
                     idx += 1
                     duration = match.group("duration")
-                    if duration != "-":
-                        duration = int(duration)
-                        requests.append({
-                            "ip": ip,
-                            "date": date,
-                            "method": method,
-                            "url": url,
-                            "duration": duration
-                        })
+                    requests.append({
+                        "ip": ip,
+                        "date": date,
+                        "method": method,
+                        "url": url,
+                        "duration": int(duration)
+                    })
                 else:
                     print(line)
 
@@ -65,10 +85,12 @@ def main(files):
         with open(f'result{findex}.json', 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
+        print(json.dumps(data, indent=4))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process access.log')
-    parser.add_argument('--file', dest='files', action='store', help='Path to logfile', nargs='+')
+    parser.add_argument('--paths', dest='paths', action='store', help='Path to directory or logfile', nargs='+')
     args = parser.parse_args()
 
-    main(args.files)
+    main(args.paths)
